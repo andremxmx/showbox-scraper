@@ -14,9 +14,9 @@ Open the index.mjs file
 
 For configuring the things you want to change are: 
 
-Seasons array 
+Seasons array ( Which seasons you want to go over scraping) [No need to change if Movie]
 
-Max episode count in the for loop 
+Max episode count in the for loop (Use either a limit if you want or if you want them all, use a high number that max episode count a season can have) [No need to change if Movie]
 
 type (will be either 'show' or 'movie') 
 
