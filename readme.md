@@ -12,14 +12,19 @@ For configuring the things you want to change are:
 Seasons array 
 
 Max episode count in the for loop 
+
 type (will be either 'show' or 'movie') 
+
 tmdbID (TMDB ID of the movie or show) 
+
 TMDB API key at the end of the URL (replace with your own if mine dies) 
 
 `const seasons = [1, 2, 3, 4, 5, 6, 7, 8];` 
+
 Change this line into the seasons you want to scrape. (Dont need to if you're scraping a movie) 
 
 ` for (let episodeNumber = 1; episodeNumber <= 25; episodeNumber++) {` 
+
 Change the "25" to the maximum amount of episodes you want to scrape from a season. If you want to scrape all, you can just put a high number such as maximum amount of episodes a season will have 
 Script will automatically skip to other season 
 
