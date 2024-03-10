@@ -4,6 +4,11 @@ A movie/series scraper using Movie-WEB's scraping tool.
 
 Proxy support
 
+## NOTE:
+Ratelimit is a HUGE problem for this project (at least for scraping series.) It should work fine on movies but keep in mind that series still have problem.
+
+Also, scraping data from TMDB is still poorly made, so if any bugs happen 🤷‍♂️
+
 # To start
 Open the index.mjs file 
 
@@ -37,6 +42,12 @@ Change these regarding what you want to scrape.
 
 # Proxy support
 If you're getting ratelimited configure the proxy line at top of the file. Code comments should help.
+
+# Video of demo:
+
+( It's bad. I know.)
+
+https://github.com/semihofc/showbox-scraper/assets/119341546/6c65047b-b64b-4da7-a891-1c2da9f9a9ae
 
 # Known issues:
 
