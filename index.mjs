@@ -1,6 +1,6 @@
 import { makeProviders, makeStandardFetcher, targets, makeSimpleProxyFetcher  } from '@movie-web/providers';
 
-const proxyUrl = "https://venerable-croissant-6a37df.netlify.app"; // Replace with your proxy URL
+const proxyUrl = ""; // Replace with your proxy URL
 
 const providers = makeProviders({
   // proxiedFetcher: makeSimpleProxyFetcher(proxyUrl, fetch),      // Use this line if you want to use a proxy
