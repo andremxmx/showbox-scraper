@@ -1,93 +1,176 @@
-import { makeProviders, makeStandardFetcher, targets, makeSimpleProxyFetcher  } from '@movie-web/providers';
+import fs from 'fs';
+import fetch from 'node-fetch';
+import minimist from 'minimist';
+import { makeProviders, makeStandardFetcher, targets } from '@movie-web/providers';
+import { Agent as httpsAgent } from 'https';
 
-const proxyUrl = ""; // Replace with your proxy URL
+const https = new httpsAgent();
 
-const providers = makeProviders({
-  // proxiedFetcher: makeSimpleProxyFetcher(proxyUrl, fetch),      // Use this line if you want to use a proxy
-  fetcher: makeStandardFetcher(fetch),
-  target: targets.NATIVE, // targets.BROWSER usable but we're scarping for downloading so we use NATIVE
-})
-/*
-For configuring the things you want to change are:
-Seasons array
-Max episode count in the for loop
-type (will be either 'show' or 'movie')
-tmdbID (TMDB ID of the movie or show)
-TMDB API key at the end of the URL (replace with your own if mine dies)
+const proxies = [
+  'https://144.22.62.109:3128'
+];
 
-If its a movie, itll fetch it, give the link and tell you to CTRL+C
-If its a show, itll continue going over the episodes and seasons you specified and give you the links
+let proxyIndex = 0;
+const useProxy = true;
 
-SEASONS ARRAY AND EPISODE COUNT DOESNT MATTER IF YOU'RE SCRAPING A MOVIE
-IT'LL JUST FETCH THE MOVIE AND GIVE YOU THE LINK
-*/
+const args = minimist(process.argv.slice(2));
+const { mode, id } = args;
+const idString = String(id);
 
+if (!mode || (mode !== 'tv' && mode !== 'movie')) {
+  console.error('Error: Please specify a valid mode: "tv" or "movie".');
+  process.exit(1);
+}
 
-const seasons = [1, 2, 3, 4, 5, 6, 7, 8]; // Modify this array to include the seasons you want to scrape over 
-// Added that because if you get ratelimited you can just change the array to the seasons you want to scrape over
+if (!id) {
+  console.error('Error: Please specify at least one ID.');
+  process.exit(1);
+}
 
-for (const seasonNumber of seasons) {
-  for (let episodeNumber = 1; episodeNumber <= 25; episodeNumber++) { //If episode count changes every season make the max value the highest episode count, itll break when it reaches the end of the season anyways
-    try {
-      /*
+const idList = idString.includes(',') ? idString.split(',').map(Number) : [Number(idString)];
 
-      type and tmdbID is the variables that you need to change
-      */
-      const type = 'show'; // 'movie' or 'show'
-      const tmdbID = 48891; // TMDB ID of the movie or show
-      /*
-      examples
-      movie: 431693
-      show: 48891
-      */
-      const response = await fetch(`https://api.themoviedb.org/3/${type === 'show' ? 'tv' : 'movie'}/${tmdbID}?api_key=5666d46d7f9ce6368ae16ea8bea0467a`); // Fetch the movie or show data from TMDB
-      const data = await response.json();
-      let releaseYear;
-      let title;
-      
-      if (type === 'show') {
-        releaseYear = data.first_air_date.split('-')[0];
-        title = data.name;
-      } else if (type === 'movie') {
-        releaseYear = data.release_date.split('-')[0];
-        title = data.original_title;
-      }
-              
-      const media = {
-        type: type,
-        title: title, // Title of the movie or show
-        releaseYear: releaseYear, // Release year of the movie or show
-        tmdbId: tmdbID, // TMDB ID of the movie or show
-        episode: {
-          number: episodeNumber 
-        },
-        season: {
-          number: seasonNumber
+async function fetchAndSaveLinks() {
+  try {
+    const providers = makeProviders({
+      fetcher: makeStandardFetcher(fetch),
+      target: targets.NATIVE,
+    });
+
+    for (const seriesID of idList) {
+      const currentProxy = useProxy ? proxies[proxyIndex % proxies.length] : null;
+      proxyIndex++;
+
+      const response = await fetch(`https://api.themoviedb.org/3/${mode === 'tv' ? 'tv' : 'movie'}/${seriesID}?api_key=5666d46d7f9ce6368ae16ea8bea0467a`, {
+        agent: currentProxy ? https : undefined,
+      });
+      const seriesData = await response.json();
+
+      if (mode === 'tv') {
+        const seriesName = seriesData.original_name;
+        const numberOfSeasons = seriesData.number_of_seasons;
+        const seasons = Array.from({ length: numberOfSeasons }, (_, index) => index + 1);
+
+        const outputJSON = { [seriesName]: {} };
+
+        for (const seasonNumber of seasons) {
+          outputJSON[seriesName][`Season ${seasonNumber}`] = {};
+          for (let episodeNumber = 1; episodeNumber <= 150; episodeNumber++) {
+            try {
+              const type = 'show';
+              const response = await fetch(`https://api.themoviedb.org/3/${type === 'show' ? 'tv' : 'movie'}/${seriesID}?api_key=5666d46d7f9ce6368ae16ea8bea0467a`, {
+                agent: currentProxy ? undefined : null,
+              });
+              const data = await response.json();
+              let releaseYear, title;
+
+              if (type === 'show') {
+                releaseYear = data.first_air_date.split('-')[0];
+                title = data.name;
+              } else if (type === 'movie') {
+                releaseYear = data.release_date.split('-')[0];
+                title = data.original_title;
+              }
+
+              const media = {
+                type: type,
+                title: title,
+                releaseYear: releaseYear,
+                tmdbId: seriesID,
+                episode: {
+                  number: episodeNumber
+                },
+                season: {
+                  number: seasonNumber
+                }
+              };
+              const Stream = await providers.runAll({
+                media: media,
+                sourceOrder: ['showbox']
+              });
+
+              const qualities = Object.keys(Stream.stream.qualities);
+              const bestQuality = qualities.reduce((prev, curr) => {
+                const prevQuality = parseInt(prev);
+                const currQuality = parseInt(curr);
+                return currQuality > prevQuality ? curr : prev;
+              });
+
+              const episodeKey = `Episode ${episodeNumber}`;
+              if (!outputJSON[seriesName][`Season ${seasonNumber}`][episodeKey]) {
+                outputJSON[seriesName][`Season ${seasonNumber}`][episodeKey] = Stream.stream.qualities[bestQuality].url;
+                console.log(`Season ${seasonNumber}, Episode ${episodeNumber}: ${Stream.stream.qualities[bestQuality].url}`);
+              }
+            } catch (error) {
+              console.error(`Error fetching Season ${seasonNumber}, Episode ${episodeNumber}: ${error.message}`);
+              break;
+            }
+          }
         }
-      };
-// scrape a stream
-      const Stream = await providers.runAll({
-        media: media,
-        sourceOrder: ['showbox'] // You can change, but preferably use showbox
-      });
 
-      const qualities = Object.keys(Stream.stream.qualities); // Get all the qualities available for the stream
-      const bestQuality = qualities.reduce((prev, curr) => { // Find the best quality
-        const prevQuality = parseInt(prev); 
-        const currQuality = parseInt(curr);
-        return currQuality > prevQuality ? curr : prev;
-      });
+        const seriesOutputPath = `url_scraped/${seriesName}.json`;
+        fs.existsSync('url_scraped') || fs.mkdirSync('url_scraped');
+        fs.writeFileSync(seriesOutputPath, JSON.stringify(outputJSON, null, 2));
+        console.log(`TV show JSON file for "${seriesName}" created successfully.`);
+      } else {
+        const title = seriesData.original_title;
+        try {
+          const type = 'movie';
+          const response = await fetch(`https://api.themoviedb.org/3/${type === 'show' ? 'tv' : 'movie'}/${seriesID}?api_key=5666d46d7f9ce6368ae16ea8bea0467a`, {
+            agent: currentProxy ? undefined : null,
+          });
+          const data = await response.json();
+          let releaseYear, movieTitle;
 
-        if (type === 'movie') {
-             console.log(`Title: ${title}`);
-             console.log(`Link: ${Stream.stream.qualities[bestQuality].url}`);
-               console.log(`Press CTRL + C to stop the script`); 
-                  break;
-           } else if (type === 'show') {
-             console.log(`Season ${seasonNumber}, Episode ${episodeNumber}: ${Stream.stream.qualities[bestQuality].url}`);
-           }
-           } catch (error) {
-      console.error(`Error fetching Season ${seasonNumber}, Episode ${episodeNumber}: ${error.message}`); // Log the error Mostly for outputting that season episodes reached the end but also can mean script got ratelimited
-      break; // Move to the next season if an error occurs
+          if (type === 'show') {
+            releaseYear = data.first_air_date.split('-')[0];
+            movieTitle = data.name;
+          } else if (type === 'movie') {
+            releaseYear= data.release_date.split('-')[0];
+            movieTitle = data.original_title;
+          }
+
+          const media = {
+            type: type,
+            title: movieTitle,
+            releaseYear: releaseYear,
+            tmdbId: seriesID
+          };
+          const Stream = await providers.runAll({
+            media: media,
+            sourceOrder: ['showbox']
+          });
+
+          const qualities = Object.keys(Stream.stream.qualities);
+          const bestQuality = qualities.reduce((prev, curr) => {
+            const prevQuality = parseInt(prev);
+            const currQuality = parseInt(curr);
+            return currQuality > prevQuality ? curr : prev;
+          });
+
+          const movieOutputJSON = {
+            id: seriesID,
+            name: movieTitle,
+            url: Stream.stream.qualities[bestQuality].url
+          };
+
+          const moviesOutputPath = `url_scraped/movies.json`;
+          fs.existsSync('url_scraped') || fs.mkdirSync('url_scraped');
+          fs.appendFileSync(moviesOutputPath, JSON.stringify(movieOutputJSON, null, 2) + ',\n');
+          console.log(`Movie JSON file for "${movieTitle}" created successfully.`);
+          console.log(`Using proxy: ${currentProxy}`);
+
+        } catch (error) {
+          console.error(`Error fetching movie data: ${error.message}`);
+        }
+      }
     }
-  }}
+  } catch (error) {
+    console.error(`Error: ${error.message}`);
+  }
+}
+// Run the script with command line arguments if any are provided
+// node index.mjs --mode movie --id 155,854
+
+// --mode   tv & movie 
+
+fetchAndSaveLinks();
